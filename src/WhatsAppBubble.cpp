@@ -179,7 +179,8 @@ void WhatsAppBubble::mouseReleaseEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
         const QPoint now = event->globalPosition().toPoint();
-        if (!m_moved && (now - m_pressGlobal).manhattanLength() < 6 && !isOnGrip(event->position().toPoint())) {
+        if (!m_moved && (now - m_pressGlobal).manhattanLength() < 8
+            && !isOnGrip(event->position().toPoint())) {
             openChat();
             event->accept();
             return;
@@ -190,7 +191,9 @@ void WhatsAppBubble::mouseReleaseEvent(QMouseEvent *event)
 
 void WhatsAppBubble::mouseMoveEvent(QMouseEvent *event)
 {
-    if ((event->globalPosition().toPoint() - m_pressGlobal).manhattanLength() > 4)
+    // Only a real drag counts as movement; hovering must not swallow the click.
+    if ((event->buttons() & Qt::LeftButton)
+        && (event->globalPosition().toPoint() - m_pressGlobal).manhattanLength() > 6)
         m_moved = true;
     FloatingWindow::mouseMoveEvent(event);
 }
