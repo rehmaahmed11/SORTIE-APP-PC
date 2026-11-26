@@ -22,7 +22,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # ------------------------------------------------------------------ Qt
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Svg)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Svg Network)
 qt_standard_project_setup()
 
 # ------------------------------------------------------------------ sources
@@ -58,7 +58,8 @@ qt_add_executable(SortieApp
 )
 
 target_include_directories(SortieApp PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(SortieApp PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg)
+# Network is only used by the single-instance guard (QLocalServer).
+target_link_libraries(SortieApp PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg Qt6::Network)
 target_compile_definitions(SortieApp PRIVATE
     SORTIE_VERSION="${PROJECT_VERSION}"
     QT_DISABLE_DEPRECATED_BEFORE=0x060000
@@ -128,7 +129,7 @@ if(WIN32)
     ")
 
     # Every one of these must exist in a healthy package.
-    foreach(_required Qt6Core.dll Qt6Gui.dll Qt6Widgets.dll Qt6Svg.dll platforms/qwindows.dll)
+    foreach(_required Qt6Core.dll Qt6Gui.dll Qt6Widgets.dll Qt6Svg.dll Qt6Network.dll platforms/qwindows.dll)
         install(CODE "
             if(NOT EXISTS \"\${CMAKE_INSTALL_PREFIX}/${_required}\")
                 message(FATAL_ERROR \"Package is incomplete: ${_required} is missing after windeployqt\")
