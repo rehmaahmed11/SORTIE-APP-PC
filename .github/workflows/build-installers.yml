@@ -1,0 +1,309 @@
+name: Build installers
+
+on:
+  push:
+    branches: [ main, 'arena/**' ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  QT_VERSION: '6.8.3'
+  APP_VERSION: '1.0.0'
+
+jobs:
+  # Fast feedback: proves the whole code base compiles cleanly.
+  linux-compile-check:
+    name: Linux compile check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6 and a compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ qt6-base-dev libqt6svg6-dev libgl1-mesa-dev
+
+      - name: Configure
+        run: |
+          set -o pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release 2>&1 | tee -a ci.log
+
+      - name: Build
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 2>&1 | tee -a ci.log
+
+      - name: Report the failure as a commit comment
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          touch ci.log
+          { echo 'Build failed on `'"$GITHUB_SHA"'`.'; echo; echo '```'; tail -c 5200 ci.log; echo '```'; } > /tmp/body.md
+          gh api -X POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@/tmp/body.md || true
+
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ams-sortie-linux-x86_64
+          path: build/SortieApp
+          if-no-files-found: warn
+
+  windows-installers:
+    name: Windows x64 - MSI + setup.exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Enable the MSVC toolchain
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Verify Qt tooling
+        shell: pwsh
+        run: |
+          if (-not $env:QT_ROOT_DIR) { throw "QT_ROOT_DIR is not set by the Qt action" }
+          Write-Host "Qt root: $env:QT_ROOT_DIR"
+          if (-not (Get-Command windeployqt.exe -ErrorAction SilentlyContinue)) {
+            throw "windeployqt.exe is not on PATH"
+          }
+          if (-not (Test-Path "$env:QT_ROOT_DIR\bin\Qt6Svg.dll")) {
+            throw "Qt6Svg.dll is missing - the Qt Svg module was not installed"
+          }
+          windeployqt.exe --version
+          cmake --version
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" 2>&1 |
+            Tee-Object -FilePath ci.log -Append
+          if ($LASTEXITCODE -ne 0) { throw "configure failed" }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --parallel 2>&1 | Tee-Object -FilePath ci.log -Append
+          if ($LASTEXITCODE -ne 0) { throw "build failed" }
+
+      - name: Stage the app (windeployqt runs at install time)
+        shell: pwsh
+        run: |
+          cmake --install build --prefix stage
+          $required = @(
+            "SortieApp.exe",
+            "Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll", "Qt6Svg.dll",
+            "platforms\qwindows.dll"
+          )
+          foreach ($file in $required) {
+            if (-not (Test-Path (Join-Path "stage" $file))) {
+              throw "The staged package is incomplete: $file is missing"
+            }
+          }
+          Get-ChildItem stage | Select-Object Name, Length | Format-Table -AutoSize
+
+      - name: Install WiX Toolset v4 (MSI builder)
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 4.0.5
+          $tools = "$env:USERPROFILE\.dotnet\tools"
+          $tools | Out-File -FilePath $env:GITHUB_PATH -Append
+          $env:PATH = "$tools;$env:PATH"
+          wix extension add -g WixToolset.UI.wixext/4.0.5
+          wix --version
+
+      - name: Build the MSI
+        shell: pwsh
+        run: cpack --config build/CPackConfig.cmake -G WIX -B dist -V
+
+      - name: Make sure NSIS is available
+        shell: pwsh
+        run: |
+          $nsis = "C:\Program Files (x86)\NSIS"
+          if (-not (Test-Path "$nsis\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+          if (-not (Test-Path "$nsis\makensis.exe")) { throw "NSIS is not installed" }
+          $nsis | Out-File -FilePath $env:GITHUB_PATH -Append
+          & "$nsis\makensis.exe" -VERSION
+
+      - name: Build setup.exe (NSIS fallback installer)
+        shell: pwsh
+        run: cpack --config build/CPackConfig.cmake -G NSIS -B dist -V
+
+      - name: Portable zip
+        shell: pwsh
+        run: |
+          $zip = "dist\AMS-Sortie-${{ env.APP_VERSION }}-portable-x64.zip"
+          Compress-Archive -Path "stage\*" -DestinationPath $zip -Force
+
+      - name: List the artefacts
+        shell: pwsh
+        run: Get-ChildItem dist -File | Select-Object Name, Length | Format-Table -AutoSize
+
+      - name: Install test - silent MSI, launch without Qt on PATH, uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $msi = Get-ChildItem dist -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw "no MSI was produced" }
+          Write-Host "Installing $($msi.Name) ($([math]::Round($msi.Length/1MB,1)) MB)"
+
+          $log = Join-Path $PWD "msi-install.log"
+          $proc = Start-Process msiexec.exe -ArgumentList "/i", "`"$($msi.FullName)`"", "/qn", "/norestart", "/l*v", "`"$log`"" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) {
+            Get-Content $log -Tail 80
+            throw "msiexec /i failed with exit code $($proc.ExitCode)"
+          }
+
+          # Where did it land?
+          $exe = Get-ChildItem "C:\Program Files\AMS" -Recurse -Filter SortieApp.exe -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+          if (-not $exe) {
+            $exe = Get-ChildItem "C:\Program Files (x86)\AMS" -Recurse -Filter SortieApp.exe -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+          }
+          if (-not $exe) { throw "SortieApp.exe was not installed under Program Files" }
+          $installDir = $exe.DirectoryName
+          Write-Host "Installed to: $installDir"
+
+          foreach ($dll in @("Qt6Core.dll","Qt6Gui.dll","Qt6Widgets.dll","Qt6Svg.dll","Qt6Network.dll","platforms\qwindows.dll")) {
+            if (-not (Test-Path (Join-Path $installDir $dll))) { throw "installed app is missing $dll" }
+          }
+
+          $version = (Get-Item $exe.FullName).VersionInfo
+          Write-Host "File version: $($version.FileVersion) - $($version.ProductName)"
+          if ($version.ProductName -notlike "AMS Sortie*") { throw "unexpected ProductName in the installed exe" }
+
+          $arp = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" |
+                 Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "AMS Sortie*" }
+          if (-not $arp) { throw "no Apps & Features entry was created" }
+          $entry = Get-ItemProperty $arp[0].PSPath
+          Write-Host "Apps & Features: $($entry.DisplayName) $($entry.DisplayVersion) by $($entry.Publisher)"
+
+          $shortcut = Get-ChildItem "C:\ProgramData\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter "*.lnk" -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Name -like "*AMS Sortie*" -or $_.Name -like "*Sortie*" } | Select-Object -First 1
+          if ($shortcut) { Write-Host "Start Menu shortcut: $($shortcut.FullName)" }
+          else { Write-Host "::warning::no Start Menu shortcut found" }
+
+          $env:PATH = "C:\Windows\system32;C:\Windows"
+
+          # Launch with a PATH that cannot see any Qt installation.
+          $env:PATH = "C:\Windows\system32;C:\Windows"
+          $app = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 8
+          if ($app.HasExited) { throw "the installed app exited immediately (code $($app.ExitCode))" }
+          Write-Host "App is running, pid $($app.Id)"
+          $procName = (Get-Process -Id $app.Id).ProcessName
+          Write-Host "Process name: $procName"
+          Stop-Process -Id $app.Id -Force
+          Start-Sleep -Seconds 1
+
+          $logDir = "$env:LOCALAPPDATA\AMS\AMS Sortie\logs"
+          if (Test-Path $logDir) {
+            Get-ChildItem $logDir -Filter *.log | ForEach-Object {
+              Write-Host "--- $($_.Name) ---"
+              Get-Content $_.FullName -Tail 25
+            }
+          } else {
+            Write-Host "::warning::no log folder was created by the running app"
+          }
+
+          $uninstall = Start-Process msiexec.exe -ArgumentList "/x", "`"$($msi.FullName)`"", "/qn", "/norestart" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "uninstall failed with code $($uninstall.ExitCode)" }
+          if (Test-Path $exe.FullName) { throw "files were left behind after uninstall" }
+          $leftover = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" |
+                      Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "AMS Sortie*" }
+          if ($leftover) { throw "the Apps & Features entry survived uninstall" }
+          Write-Host "Install, launch and uninstall all verified."
+
+          $summary = @(
+            "MSI: $($msi.Name) ($([math]::Round($msi.Length/1MB,1)) MB)"
+            "Installed to: $installDir"
+            "Exe version info: $($version.ProductName) $($version.FileVersion)"
+            "Apps & Features: $($entry.DisplayName) $($entry.DisplayVersion) by $($entry.Publisher)"
+            "Start Menu shortcut: $(if ($shortcut) { $shortcut.FullName } else { 'NOT FOUND' })"
+            "Process name while running: $procName"
+            "Uninstall: clean (no files, no registry entry left)"
+          )
+          $summary | Set-Content -Path install-summary.txt -Encoding utf8
+          $summary | ForEach-Object { Write-Host $_ }
+
+      - name: Publish the Install test summary
+        if: always() && github.event_name != 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f install-summary.txt ]; then
+            { echo 'Windows install test on `'"$GITHUB_SHA"'`'; echo; echo '```'; cat install-summary.txt; echo '```'; } > /tmp/summary.md
+            gh api -X POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@/tmp/summary.md || true
+          fi
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ams-sortie-windows-x64
+          path: |
+            dist/*.msi
+            dist/*.exe
+            dist/*.zip
+          if-no-files-found: error
+
+      - name: Report the failure as a commit comment
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          touch ci.log
+          { echo 'Windows build failed on `'"$GITHUB_SHA"'`.'; echo; echo '```'; tail -c 5200 ci.log; echo '```'; } > /tmp/body.md
+          gh api -X POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@/tmp/body.md || true
+
+      - name: Publish the release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AMS Sortie ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            **AMS Sortie** - Drop it. Sorted.
+
+            ### Install (recommended)
+            Download **`AMS.Sortie-*-win64.msi`** and double-click it. It installs for all
+            users into `C:\Program Files\AMS\Sortie`, adds a **Start Menu** entry, appears in
+            **Apps & Features** as "AMS Sortie 1.0.0 by Rehman Ahmed (AMS)" and uninstalls cleanly.
+            The Qt runtime is bundled - nothing else to install.
+
+            Other files:
+
+            - `AMS.Sortie-*-win64.exe` - NSIS setup, offers a Desktop shortcut.
+            - `AMS-Sortie-*-portable-x64.zip` - portable copy, just run `SortieApp.exe`.
+
+            ### What changed
+            - Long transfers no longer freeze or crash: every move runs on a worker thread.
+            - Windows-style transfer window: progress bar, transferred vs total size, speed,
+              time left, file counts and a working Cancel button.
+            - Redesigned dial: petal ring, live progress ring, AMS branding.
+            - Stretchable dial and WhatsApp bubble with screen-edge anchors.
+            - Floating WhatsApp contact icon - `+92 306 0706989`.
+
+            Rehman Ahmed - WhatsApp/phone `+92 306 0706989`
+          files: |
+            dist/*.msi
+            dist/*.exe
+            dist/*.zip

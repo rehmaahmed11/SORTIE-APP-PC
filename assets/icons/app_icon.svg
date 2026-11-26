@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <radialGradient id="orbFill" cx="0.5" cy="0.32" r="0.78">
+      <stop offset="0" stop-color="#24333d"/>
+      <stop offset="0.55" stop-color="#111a20"/>
+      <stop offset="1" stop-color="#070b0e"/>
+    </radialGradient>
+    <linearGradient id="accents" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2bf0c1"/>
+      <stop offset="1" stop-color="#00a882"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="32" cy="32" r="31" fill="url(#orbFill)"/>
+  <circle cx="32" cy="32" r="29.4" fill="none" stroke="url(#accents)" stroke-width="1.6" stroke-opacity="0.85"/>
+  <circle cx="32" cy="32" r="25.6" fill="none" stroke="#00e5b0" stroke-width="0.8" stroke-opacity="0.35" stroke-dasharray="2.4 3.2"/>
+
+  <!-- petal ring -->
+  <g stroke="none">
+    <circle cx="32" cy="13.2" r="2.5" fill="#00e5b0"/>
+    <circle cx="45.3" cy="18.7" r="2.5" fill="#ffb020"/>
+    <circle cx="50.8" cy="32" r="2.5" fill="#4fa8ff"/>
+    <circle cx="45.3" cy="45.3" r="2.5" fill="#ff7ac6"/>
+    <circle cx="32" cy="50.8" r="2.5" fill="#a78bfa"/>
+    <circle cx="18.7" cy="45.3" r="2.5" fill="#5be37d"/>
+    <circle cx="13.2" cy="32" r="2.5" fill="#ff8a5c"/>
+    <circle cx="18.7" cy="18.7" r="2.5" fill="#38d9d9"/>
+  </g>
+
+  <text x="32" y="33.4" text-anchor="middle" font-family="Segoe UI, DejaVu Sans, sans-serif"
+        font-size="14" font-weight="bold" letter-spacing="0.6" fill="#eaf2f7">AMS</text>
+  <text x="32" y="41.6" text-anchor="middle" font-family="Segoe UI, DejaVu Sans, sans-serif"
+        font-size="4.4" font-weight="bold" letter-spacing="1.1" fill="#00e5b0">SORTIE</text>
+</svg>
