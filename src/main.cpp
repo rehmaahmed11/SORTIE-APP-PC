@@ -21,6 +21,7 @@
 #include <QScopedPointer>
 #include <QScreen>
 #include <QSystemTrayIcon>
+#include <QTimer>
 #include <QUrl>
 
 int main(int argc, char *argv[])
@@ -79,8 +80,14 @@ int main(int argc, char *argv[])
                          const bool copyMode =
                              TransferManager::instance().options().mode == Transfer::Mode::Copy;
                          transferWindow.begin(sources, destination, copyMode);
-                         if (showWindow)
-                             transferWindow.present();
+                         if (!showWindow)
+                             return;
+                         // A 2-file move must not flash a window: only surface the progress
+                         // window when the job is still running a moment later.
+                         QTimer::singleShot(350, &transferWindow, [&transferWindow]() {
+                             if (TransferManager::instance().busy())
+                                 transferWindow.present();
+                         });
                      });
     QObject::connect(&manager, &TransferManager::progress, &transferWindow,
                      &TransferDialog::updateProgress);

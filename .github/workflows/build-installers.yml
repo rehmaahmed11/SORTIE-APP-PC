@@ -195,9 +195,11 @@ jobs:
           Write-Host "Apps & Features: $($entry.DisplayName) $($entry.DisplayVersion) by $($entry.Publisher)"
 
           $shortcut = Get-ChildItem "C:\ProgramData\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter "*.lnk" -ErrorAction SilentlyContinue |
-                      Where-Object { $_.Name -like "*AMS Sortie*" } | Select-Object -First 1
+                      Where-Object { $_.Name -like "*AMS Sortie*" -or $_.Name -like "*Sortie*" } | Select-Object -First 1
           if ($shortcut) { Write-Host "Start Menu shortcut: $($shortcut.FullName)" }
           else { Write-Host "::warning::no Start Menu shortcut found" }
+
+          $env:PATH = "C:\Windows\system32;C:\Windows"
 
           # Launch with a PATH that cannot see any Qt installation.
           $env:PATH = "C:\Windows\system32;C:\Windows"
@@ -227,6 +229,29 @@ jobs:
                       Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "AMS Sortie*" }
           if ($leftover) { throw "the Apps & Features entry survived uninstall" }
           Write-Host "Install, launch and uninstall all verified."
+
+          $summary = @(
+            "MSI: $($msi.Name) ($([math]::Round($msi.Length/1MB,1)) MB)"
+            "Installed to: $installDir"
+            "Exe version info: $($version.ProductName) $($version.FileVersion)"
+            "Apps & Features: $($entry.DisplayName) $($entry.DisplayVersion) by $($entry.Publisher)"
+            "Start Menu shortcut: $(if ($shortcut) { $shortcut.FullName } else { 'NOT FOUND' })"
+            "Process name while running: $procName"
+            "Uninstall: clean (no files, no registry entry left)"
+          )
+          $summary | Set-Content -Path install-summary.txt -Encoding utf8
+          $summary | ForEach-Object { Write-Host $_ }
+
+      - name: Publish the Install test summary
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f install-summary.txt ]; then
+            { echo 'Windows install test on `'"$GITHUB_SHA"'`'; echo; echo '```'; cat install-summary.txt; echo '```'; } > /tmp/summary.md
+            gh api -X POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@/tmp/summary.md || true
+          fi
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
