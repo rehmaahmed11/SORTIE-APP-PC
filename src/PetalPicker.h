@@ -37,7 +37,7 @@ protected:
 
 private:
     int rowCount() const;
-    int addRowIndex() const { return m_petals.size(); }
+    int addRowIndex() const { return int(m_petals.size()); }
     int rowAt(const QPoint &pos) const;
     QRect rowRect(int row) const;
     void choose(int row);

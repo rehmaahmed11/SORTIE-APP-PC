@@ -268,9 +268,9 @@ void WhatsAppBubble::contextMenuEvent(QContextMenuEvent *event)
     }
 
     menu.addSeparator();
-    QAction *hide = menu.addAction(QStringLiteral("Hide this bubble"));
-    connect(hide, &QAction::triggered, this, [this]() {
-        hide();
+    QAction *hideAction = menu.addAction(QStringLiteral("Hide this bubble"));
+    connect(hideAction, &QAction::triggered, this, [this]() {
+        QWidget::hide();
         emit hideRequested();
     });
 

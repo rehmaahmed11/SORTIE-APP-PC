@@ -185,7 +185,7 @@ QPointF OrbWidget::badgeCenter() const
 
 int OrbWidget::visiblePetalCount() const
 {
-    return qMin(ConfigStore::data().petals.size(), 8);
+    return qMin(8, int(ConfigStore::data().petals.size()));
 }
 
 OrbWidget::Hit OrbWidget::hitAt(const QPoint &pos) const
@@ -749,7 +749,7 @@ void OrbWidget::dropEvent(QDropEvent *event)
     const bool copyMode = event->modifiers().testFlag(Qt::ControlModifier)
                           || event->dropAction() == Qt::CopyAction;
     beginPending(files, copyMode);
-    showPicker(event->position().toPoint() + QPoint(0, 0));
+    showPicker(event->position().toPoint());
 }
 
 // ---------------------------------------------------------------- pending job

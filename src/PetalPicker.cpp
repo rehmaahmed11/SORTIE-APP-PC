@@ -61,7 +61,7 @@ PetalPicker::PetalPicker(const QStringList &items, const QList<Petal> &petals, b
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
 
-    const int rows = qMax(1, m_petals.size()) + 1; // petals + "add" row
+    const int rows = qMax(1, int(m_petals.size())) + 1; // petals + "add" row
     resize(kWidth, kPad * 2 + kHeaderH + rows * kRowH + kFooterH);
 }
 
@@ -74,7 +74,7 @@ QString PetalPicker::itemsLabel() const
 
 int PetalPicker::rowCount() const
 {
-    return m_petals.size() + 1; // + add row
+    return int(m_petals.size()) + 1; // + add row
 }
 
 QRect PetalPicker::rowRect(int row) const
