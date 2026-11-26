@@ -1,0 +1,17 @@
+<RCC>
+  <qresource prefix="/">
+    <file>assets/icons/app.ico</file>
+    <file>assets/icons/app.png</file>
+    <file>assets/icons/app_icon.svg</file>
+    <file>assets/icons/whatsapp.svg</file>
+    <file>assets/icons/folder.svg</file>
+    <file>assets/icons/folder_archive.svg</file>
+    <file>assets/icons/folder_docs.svg</file>
+    <file>assets/icons/folder_fbm.svg</file>
+    <file>assets/icons/folder_mtk.svg</file>
+    <file>assets/icons/icon_add.svg</file>
+    <file>assets/icons/icon_move.svg</file>
+    <file>assets/icons/icon_remove.svg</file>
+    <file>assets/icons/icon_settings.svg</file>
+  </qresource>
+</RCC>
