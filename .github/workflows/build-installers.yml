@@ -29,10 +29,23 @@ jobs:
             cmake ninja-build g++ qt6-base-dev libqt6svg6-dev libgl1-mesa-dev
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: |
+          set -o pipefail
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release 2>&1 | tee -a ci.log
 
       - name: Build
-        run: cmake --build build --parallel
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 2>&1 | tee -a ci.log
+
+      - name: Report the failure as a commit comment
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          touch ci.log
+          { echo 'Build failed on `'"$GITHUB_SHA"'`.'; echo; echo '```'; tail -c 5200 ci.log; echo '```'; } > /tmp/body.md
+          gh api -X POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@/tmp/body.md || true
 
       - name: Upload Linux binary
         uses: actions/upload-artifact@v4
@@ -75,14 +88,16 @@ jobs:
 
       - name: Configure
         shell: pwsh
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" 2>&1 |
+            Tee-Object -FilePath ci.log -Append
+          if ($LASTEXITCODE -ne 0) { throw "configure failed" }
 
       - name: Build
         shell: pwsh
-        run: cmake --build build --parallel
+        run: |
+          cmake --build build --parallel 2>&1 | Tee-Object -FilePath ci.log -Append
+          if ($LASTEXITCODE -ne 0) { throw "build failed" }
 
       - name: Stage the app (windeployqt runs at install time)
         shell: pwsh
@@ -148,6 +163,16 @@ jobs:
             dist/*.exe
             dist/*.zip
           if-no-files-found: error
+
+      - name: Report the failure as a commit comment
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          touch ci.log
+          { echo 'Windows build failed on `'"$GITHUB_SHA"'`.'; echo; echo '```'; tail -c 5200 ci.log; echo '```'; } > /tmp/body.md
+          gh api -X POST "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/comments" -F body=@/tmp/body.md || true
 
       - name: Publish the release (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
