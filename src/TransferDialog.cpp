@@ -10,6 +10,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGridLayout>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QKeyEvent>
@@ -350,6 +352,13 @@ void TransferDialog::finish(const Transfer::Result &result)
 
 void TransferDialog::present()
 {
+    if (!m_placedOnce) {
+        if (const QScreen *screen = QGuiApplication::primaryScreen()) {
+            const QRect area = screen->availableGeometry();
+            move(area.center() - QPoint(width() / 2, height() / 2));
+        }
+        m_placedOnce = true;
+    }
     show();
     raise();
     activateWindow();

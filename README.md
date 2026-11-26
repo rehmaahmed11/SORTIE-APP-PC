@@ -38,13 +38,14 @@ Other hardening that came out of the review:
 
 ## Install (end users)
 
-Download the latest **`AMS Sortie-1.0.0-win64.msi`** from the release page and double-click it.
+Download the latest **`AMS.Sortie-1.0.0-win64.msi`** from the
+[releases page](https://github.com/rehmaahmed11/SORTIE-APP-PC/releases/latest) and double-click it.
 
 * Installs **per machine** into `C:\Program Files\AMS\Sortie` (admin prompt once).
 * Adds a **Start Menu** shortcut, an **Apps & Features** entry with the AMS icon, and a clean
   uninstaller. Installing a newer MSI upgrades the old version in place.
 * The Qt runtime is bundled — nothing else needs to be installed.
-* `AMS Sortie-1.0.0-win64.exe` (NSIS) is an alternative setup with a Desktop-shortcut option.
+* `AMS.Sortie-1.0.0-win64.exe` (NSIS) is an alternative setup with a Desktop-shortcut option.
 * The `.zip` is a portable copy: no installation, just run `SortieApp.exe`.
 
 ## Use

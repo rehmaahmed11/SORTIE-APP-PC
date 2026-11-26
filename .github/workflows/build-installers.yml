@@ -243,7 +243,7 @@ jobs:
           $summary | ForEach-Object { Write-Host $_ }
 
       - name: Publish the Install test summary
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -283,11 +283,24 @@ jobs:
           body: |
             **AMS Sortie** - Drop it. Sorted.
 
-            - `AMS Sortie-*-win64.msi` - recommended: per-machine install into
-              `C:\Program Files\AMS\Sortie`, Start Menu shortcut, entry in
-              Apps & Features, clean uninstaller.
-            - `AMS Sortie-*-win64.exe` - NSIS setup with a Desktop shortcut option.
-            - `*.zip` - portable copy, no installation needed.
+            ### Install (recommended)
+            Download **`AMS.Sortie-*-win64.msi`** and double-click it. It installs for all
+            users into `C:\Program Files\AMS\Sortie`, adds a **Start Menu** entry, appears in
+            **Apps & Features** as "AMS Sortie 1.0.0 by Rehman Ahmed (AMS)" and uninstalls cleanly.
+            The Qt runtime is bundled - nothing else to install.
+
+            Other files:
+
+            - `AMS.Sortie-*-win64.exe` - NSIS setup, offers a Desktop shortcut.
+            - `AMS-Sortie-*-portable-x64.zip` - portable copy, just run `SortieApp.exe`.
+
+            ### What changed
+            - Long transfers no longer freeze or crash: every move runs on a worker thread.
+            - Windows-style transfer window: progress bar, transferred vs total size, speed,
+              time left, file counts and a working Cancel button.
+            - Redesigned dial: petal ring, live progress ring, AMS branding.
+            - Stretchable dial and WhatsApp bubble with screen-edge anchors.
+            - Floating WhatsApp contact icon - `+92 306 0706989`.
 
             Rehman Ahmed - WhatsApp/phone `+92 306 0706989`
           files: |

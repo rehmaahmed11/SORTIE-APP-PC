@@ -68,4 +68,5 @@ private:
     int m_itemCount = 0;
     Transfer::Result m_lastResult;
     bool m_hasResult = false;
+    bool m_placedOnce = false;
 };
