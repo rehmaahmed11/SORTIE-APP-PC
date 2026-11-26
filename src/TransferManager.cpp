@@ -31,7 +31,9 @@ bool TransferManager::start(const QStringList &sources, const QString &destinati
     m_progress.itemCount = sources.size();
     m_result = Transfer::Result();
 
-    m_thread = new QThread(this);
+    // Deliberately parentless: if the user quits while a job is stuck on a slow
+    // network share, leaking the thread object is safer than destroying a running QThread.
+    m_thread = new QThread();
     m_thread->setObjectName(QStringLiteral("sortie-transfer"));
     m_worker = new TransferWorker(sources, destination, options);
     m_worker->moveToThread(m_thread);
