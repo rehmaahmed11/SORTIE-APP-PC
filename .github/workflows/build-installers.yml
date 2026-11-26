@@ -154,6 +154,80 @@ jobs:
         shell: pwsh
         run: Get-ChildItem dist -File | Select-Object Name, Length | Format-Table -AutoSize
 
+      - name: Install test - silent MSI, launch without Qt on PATH, uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $msi = Get-ChildItem dist -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw "no MSI was produced" }
+          Write-Host "Installing $($msi.Name) ($([math]::Round($msi.Length/1MB,1)) MB)"
+
+          $log = Join-Path $PWD "msi-install.log"
+          $proc = Start-Process msiexec.exe -ArgumentList "/i", "`"$($msi.FullName)`"", "/qn", "/norestart", "/l*v", "`"$log`"" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) {
+            Get-Content $log -Tail 80
+            throw "msiexec /i failed with exit code $($proc.ExitCode)"
+          }
+
+          # Where did it land?
+          $exe = Get-ChildItem "C:\Program Files\AMS" -Recurse -Filter SortieApp.exe -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+          if (-not $exe) {
+            $exe = Get-ChildItem "C:\Program Files (x86)\AMS" -Recurse -Filter SortieApp.exe -ErrorAction SilentlyContinue |
+                   Select-Object -First 1
+          }
+          if (-not $exe) { throw "SortieApp.exe was not installed under Program Files" }
+          $installDir = $exe.DirectoryName
+          Write-Host "Installed to: $installDir"
+
+          foreach ($dll in @("Qt6Core.dll","Qt6Gui.dll","Qt6Widgets.dll","Qt6Svg.dll","Qt6Network.dll","platforms\qwindows.dll")) {
+            if (-not (Test-Path (Join-Path $installDir $dll))) { throw "installed app is missing $dll" }
+          }
+
+          $version = (Get-Item $exe.FullName).VersionInfo
+          Write-Host "File version: $($version.FileVersion) - $($version.ProductName)"
+          if ($version.ProductName -notlike "AMS Sortie*") { throw "unexpected ProductName in the installed exe" }
+
+          $arp = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" |
+                 Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "AMS Sortie*" }
+          if (-not $arp) { throw "no Apps & Features entry was created" }
+          $entry = Get-ItemProperty $arp[0].PSPath
+          Write-Host "Apps & Features: $($entry.DisplayName) $($entry.DisplayVersion) by $($entry.Publisher)"
+
+          $shortcut = Get-ChildItem "C:\ProgramData\Microsoft\Windows\Start Menu\Programs" -Recurse -Filter "*.lnk" -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Name -like "*AMS Sortie*" } | Select-Object -First 1
+          if ($shortcut) { Write-Host "Start Menu shortcut: $($shortcut.FullName)" }
+          else { Write-Host "::warning::no Start Menu shortcut found" }
+
+          # Launch with a PATH that cannot see any Qt installation.
+          $env:PATH = "C:\Windows\system32;C:\Windows"
+          $app = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 8
+          if ($app.HasExited) { throw "the installed app exited immediately (code $($app.ExitCode))" }
+          Write-Host "App is running, pid $($app.Id)"
+          $procName = (Get-Process -Id $app.Id).ProcessName
+          Write-Host "Process name: $procName"
+          Stop-Process -Id $app.Id -Force
+          Start-Sleep -Seconds 1
+
+          $logDir = "$env:LOCALAPPDATA\AMS\AMS Sortie\logs"
+          if (Test-Path $logDir) {
+            Get-ChildItem $logDir -Filter *.log | ForEach-Object {
+              Write-Host "--- $($_.Name) ---"
+              Get-Content $_.FullName -Tail 25
+            }
+          } else {
+            Write-Host "::warning::no log folder was created by the running app"
+          }
+
+          $uninstall = Start-Process msiexec.exe -ArgumentList "/x", "`"$($msi.FullName)`"", "/qn", "/norestart" -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "uninstall failed with code $($uninstall.ExitCode)" }
+          if (Test-Path $exe.FullName) { throw "files were left behind after uninstall" }
+          $leftover = Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" |
+                      Where-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName -like "AMS Sortie*" }
+          if ($leftover) { throw "the Apps & Features entry survived uninstall" }
+          Write-Host "Install, launch and uninstall all verified."
+
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
